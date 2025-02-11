@@ -16,7 +16,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: ["http://localhost:5173","https://mipipizza.com", "https://www.mipipizza.com/"], // Permitir conexiones desde el frontend
+    origin: ["http://localhost:5173", "https://mipipizza.com", "https://www.mipipizza.com/"],
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
   },
@@ -26,26 +26,23 @@ const io = new Server(server, {
 app.use(express.json());
 app.use(
   cors({
-    origin: ["http://localhost:5173","https://mipipizza.com", "https://www.mipipizza.com/"],
+    origin: ["http://localhost:5173", "https://mipipizza.com", "https://www.mipipizza.com/"],
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
   })
 );
 
-// 📌 Inyectar `io` en las rutas
-app.use((req, res, next) => {
-  req.io = io; // Hacer disponible `io` para todos los controladores
-  next();
-});
+// 📌 Inyectar `io` en todas las rutas
+app.set("io", io);
 
-// 📌 WebSockets: Manejo de eventos
+// 📌 WebSockets: Manejo de eventos en tiempo real
 io.on("connection", (socket) => {
   console.log("🟢 Cliente conectado:", socket.id);
 
-  // 📌 Escuchar eventos de actualización de pedidos
+  // 📢 Emitir cuando un pedido se actualiza
   socket.on("updateOrder", (order) => {
     console.log("📢 Pedido actualizado:", order);
-    io.emit("orderUpdated", order); // Notificar a todos los clientes conectados
+    io.emit("orderUpdated", order); // Notificar a todos los clientes
   });
 
   socket.on("disconnect", () => {
@@ -54,11 +51,11 @@ io.on("connection", (socket) => {
 });
 
 // 📌 Rutas de la API
-app.use("/pizzas", pizzaRoutes); // Rutas para gestionar pizzas
-app.use("/users", userRoutes); // Rutas para gestionar usuarios
-app.use("/orders", orderRoutes); // Rutas para gestionar pedidos
-app.use("/auth", authRoutes); // Rutas para autenticación
-app.use("/admin", adminRoutes); // Rutas para funcionalidades administrativas
+app.use("/pizzas", pizzaRoutes);
+app.use("/users", userRoutes);
+app.use("/orders", orderRoutes); // 📢 Esta ruta emitirá `newOrder`
+app.use("/auth", authRoutes);
+app.use("/admin", adminRoutes);
 
 const PORT = process.env.PORT || 5000;
 
