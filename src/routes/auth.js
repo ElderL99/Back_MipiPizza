@@ -10,74 +10,88 @@ router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Validar que los campos estén presentes
-    if (!email || !password) {
-      return res.status(400).json({ message: "Por favor, ingresa el email y la contraseña" });
-    }
-
-    // Buscar al usuario en la base de datos
+    // Buscar usuario por email
     const user = await User.findOne({ email });
+
     if (!user) {
-      return res.status(400).json({ message: "Credenciales inválidas" });
+      return res.status(400).json({ message: "Usuario no encontrado" });
     }
 
-    // Comparar la contraseña ingresada con la almacenada
+    // Comparar contraseña
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(400).json({ message: "Credenciales inválidas" });
+      return res.status(400).json({ message: "Contraseña incorrecta" });
     }
 
-    // Generar un token JWT
+    // Crear token
     const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, {
-      expiresIn: "1d", // El token expira en 1 día
+      expiresIn: "7d",
     });
 
-    // Enviar el token y los datos del usuario
+    // Enviar respuesta con `name` incluido
     res.json({
       message: "Inicio de sesión exitoso",
+      user: {
+        id: user._id,
+        name: user.name,  // 🔹 Asegurar que `name` se envía
+        email: user.email,
+        role: user.role,
+      },
       token,
-      user: { id: user._id, email: user.email, role: user.role },
     });
+
   } catch (error) {
-    console.error("Error en el inicio de sesión:", error.message);
+    console.error("🔥 Error en login:", error);
     res.status(500).json({ message: "Error en el servidor" });
   }
 });
 
 
+
 // Ruta de registro
 router.post("/register", async (req, res) => {
-    try {
-      const { email, password, role } = req.body;
-  
-      // Validaciones básicas
-      if (!email || !password) {
-        return res.status(400).json({ message: "Email y contraseña son obligatorios" });
-      }
-  
-      // Verificar si el usuario ya existe
-      const existingUser = await User.findOne({ email });
-      if (existingUser) {
-        return res.status(400).json({ message: "El email ya está registrado" });
-      }
-  
-      // Cifrar la contraseña
-      const hashedPassword = await bcrypt.hash(password, 10);
-  
-      // Crear el usuario
-      const newUser = new User({
-        email,
-        password: hashedPassword,
-        role: role || "user",
-      });
-  
-      // Guardar en la base de datos
-      await newUser.save();
-      res.status(201).json({ message: "Usuario registrado con éxito" });
-    } catch (error) {
-      console.error("Error al registrar:", error.message);
-      res.status(500).json({ message: "Error en el servidor" });
+  try {
+    console.log("📥 Datos recibidos en /register:", req.body);
+
+    const { name, email, password, role } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: "El nombre, email y contraseña son obligatorios" });
     }
-  });
+
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ message: "El email ya está registrado" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser = new User({
+      name, // <-- Asegurar que name se guarda en la base de datos
+      email,
+      password: hashedPassword,
+      role: role || "user",
+    });
+
+    await newUser.save();
+
+    // **Devolver el usuario con el nombre en la respuesta**
+    res.status(201).json({
+      message: "Usuario registrado con éxito",
+      user: {
+        id: newUser._id,
+        name: newUser.name,  // <-- Asegurar que el frontend recibe el nombre
+        email: newUser.email,
+        role: newUser.role,
+      },
+    });
+
+  } catch (error) {
+    console.error("🔥 Error al registrar usuario:", error);
+    res.status(500).json({ message: "Error en el servidor", error: error.message });
+  }
+});
+
+
 
 module.exports = router;

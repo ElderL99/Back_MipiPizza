@@ -1,5 +1,6 @@
 const express = require("express");
 const Order = require("../models/Order");
+const CanceledOrder = require("../models/CanceledOrder"); // Importar el modelo de pedidos cancelados
 
 const router = express.Router();
 const { verifyToken } = require("../middleware/authMiddleware");
@@ -42,7 +43,7 @@ router.post("/", verifyToken, async (req, res) => {
       total,
       cartItems,
       status: status || "En preparación",
-      userId: req.userId, // Relación con el usuario autenticado
+      userId: req.userId,
     });
 
     const savedOrder = await newOrder.save();
@@ -61,7 +62,7 @@ router.post("/", verifyToken, async (req, res) => {
 // Obtener todos los pedidos del usuario autenticado (protegido)
 router.get("/", verifyToken, async (req, res) => {
   try {
-    const orders = await Order.find({ userId: req.userId }); // Filtrar por usuario
+    const orders = await Order.find({ userId: req.userId });
     res.status(200).json({ orders });
   } catch (error) {
     console.error("Error al obtener pedidos:", error.message);
@@ -74,7 +75,7 @@ router.get("/active-order", verifyToken, async (req, res) => {
   try {
     const activeOrder = await Order.findOne({
       userId: req.userId,
-      status: { $ne: "Entregado" }, // Consideramos activo si no está entregado
+      status: { $ne: "Entregado" },
     });
 
     if (activeOrder) {
@@ -107,6 +108,9 @@ router.put("/:id", verifyToken, async (req, res) => {
       return res.status(404).json({ message: "Pedido no encontrado" });
     }
 
+    // 📢 Emitir el evento `orderUpdated` con el pedido actualizado
+    req.io.emit("orderUpdated", updatedOrder);
+
     res.json({
       message: "Estado del pedido actualizado correctamente",
       order: updatedOrder,
@@ -117,25 +121,74 @@ router.put("/:id", verifyToken, async (req, res) => {
   }
 });
 
-// Eliminar un pedido (protegido)
+// Eliminar un pedido (protegido) y moverlo a `canceledOrders`
 router.delete("/:id", verifyToken, async (req, res) => {
   try {
     const order = await Order.findOne({
       _id: req.params.id,
-      userId: req.userId, // Verificar usuario
+      userId: req.userId,
     });
+
     if (!order) {
       return res
         .status(404)
         .json({ message: "Pedido no encontrado o no autorizado" });
     }
 
+    // Crear una entrada en `canceledOrders`
+    await CanceledOrder.create({
+      customerName: order.customerName,
+      address: order.address,
+      references: order.references,
+      phone: order.phone,
+      paymentMethod: order.paymentMethod,
+      total: order.total,
+      cartItems: order.cartItems,
+      status: "Cancelado",
+      userId: order.userId,
+      canceledAt: new Date(), // Fecha de cancelación
+    });
+
+    // Eliminar la orden de `orders`
     await Order.findByIdAndDelete(req.params.id);
-    res.status(200).json({ message: "Pedido eliminado correctamente" });
+
+    // 📢 Emitir el evento `orderDeleted` con WebSockets
+    req.io.emit("orderDeleted", order);
+
+    res.status(200).json({ message: "Pedido cancelado y movido a cancelados" });
   } catch (error) {
-    console.error("Error al eliminar el pedido:", error.message);
-    res.status(500).json({ message: "Error al eliminar el pedido" });
+    console.error("Error al cancelar el pedido:", error.message);
+    res.status(500).json({ message: "Error al cancelar el pedido" });
   }
 });
+
+// Cancelar un pedido (protegido)
+router.put("/:id/cancel", verifyToken, async (req, res) => {
+  try {
+    const orderId = req.params.id;
+
+    const order = await Order.findOne({
+      _id: orderId,
+      userId: req.userId,
+    });
+
+    if (!order) {
+      return res.status(404).json({ message: "Pedido no encontrado o no autorizado" });
+    }
+
+    // Cambiar el estado del pedido a "Cancelado"
+    order.status = "Cancelado";
+    await order.save();
+
+    // Opcional: Emitir un evento WebSocket si es necesario
+    req.io.emit("orderUpdated", order);
+
+    res.status(200).json({ message: "Pedido cancelado correctamente", order });
+  } catch (error) {
+    console.error("Error al cancelar el pedido:", error.message);
+    res.status(500).json({ message: "Error al cancelar el pedido" });
+  }
+});
+
 
 module.exports = router;
