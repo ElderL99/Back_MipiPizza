@@ -149,8 +149,8 @@ Real-time updates using Socket.IO:
 
 For questions or contributions:
 
-- Email: youremail@example.com
-- GitHub: [github.com/yourusername](https://github.com/yourusername)
+- Email: aaro.adan.lugo@gmail.com
+- GitHub: https://github.com/ElderL99
 
 ---
 
